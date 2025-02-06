@@ -428,7 +428,7 @@ def load_dataset(task_name: str,
     if extra_data_folder is not None:
         if type(extra_data_folder) != list:
             extra_data_folder = [extra_data_folder]
-        add_data_folder = add_data_folder + data_folders
+        data_folders = data_folders + extra_data_folder
     ######
     assert test_size <= 1.0
 
