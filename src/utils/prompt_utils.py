@@ -437,7 +437,7 @@ def load_dataset(task_name: str,
 
     d_group = list(filter(lambda x: x[1], d_group_map))
 
-    assert len(d_group) != 0 and len(d_group) == 1, f"Error! 'task_name'={task_name}.json must be uniquely contained in one of these directories:{data_folders}. Please check the root_data_dir. If you look for \"_const_len\" datasets, please use the create_const_len_ds.py script in the root of the dataset_files dir."
+    assert len(d_group) != 0 and len(d_group) == 1, f"Error! 'task_name'={task_name}.json must be uniquely contained in one of these directories:{data_folders}. Please check the root_data_dir. If you look for const_len datasets (datasets with \"_len_\" in its name), please use the create_const_len_ds.py script in the root of the dataset_files dir."
     dataset_folder = d_group[0][0]
     
     d_path = os.path.join(path, dataset_folder, f'{task_name}.json')
