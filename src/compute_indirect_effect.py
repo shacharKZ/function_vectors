@@ -10,8 +10,10 @@ from utils.intervention_utils import *
 from utils.model_utils import *
 from utils.extract_utils import *
 
+import datetime
 
-def activation_replacement_per_class_intervention(prompt_data, avg_activations, dummy_labels, model, model_config, tokenizer, last_token_only=True):
+
+def activation_replacement_per_class_intervention(prompt_data, avg_activations, dummy_labels, model, model_config, tokenizer, last_token_only=True, annotate=False):
     """
     Experiment to determine top intervention locations through avg activation replacement. 
     Performs a systematic sweep over attention heads (layer, head) to track their causal influence on probs of key tokens.
@@ -115,8 +117,12 @@ def compute_indirect_effect(dataset, mean_activations, model, model_config, toke
     else:
         dummy_gt_labels = get_dummy_token_labels(n_shots, tokenizer=tokenizer, model_config=model_config)
 
+    print(f'dummy_gt_labels:', dummy_gt_labels)
+
     # If the model already prepends a bos token by default, we don't want to add one
-    prepend_bos = False if model_config['prepend_bos'] else True
+    # is_llama = 'llama' in model_config['name_or_path']
+    is_llama = 'llama' in model_config['name_or_path'] or 'facebook/opt' in model_config['name_or_path']
+    prepend_bos = not is_llama
 
     if last_token_only:
         indirect_effect = torch.zeros(n_trials,model_config['n_layers'], model_config['n_heads'])
@@ -140,18 +146,25 @@ def compute_indirect_effect(dataset, mean_activations, model, model_config, toke
                                                                     avg_activations = mean_activations, 
                                                                     dummy_labels=dummy_gt_labels, 
                                                                     model=model, model_config=model_config, tokenizer=tokenizer, 
-                                                                    last_token_only=last_token_only)
+                                                                    last_token_only=last_token_only,
+                                                                    annotate=i%10==0)
         indirect_effect[i] = ind_effects.squeeze()
 
     return indirect_effect
 
 
 if __name__ == "__main__":
+
+    DEBUG_FLAG = False  # for local testing
+    if DEBUG_FLAG:
+        print('*'*16)
+        print('   DEBUG MODE')
+        print('*'*16)
     
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--dataset_name', help='Name of the dataset to be loaded', type=str, required=True)
-    parser.add_argument('--model_name', help='Name of model to be loaded', type=str, required=False, default='EleutherAI/gpt-j-6b')
+    parser.add_argument('--model_name', help='Name of model to be loaded', type=str, required=False, default='GPT2-xl')
     parser.add_argument('--root_data_dir', help='Root directory of data files', type=str, required=False, default='../dataset_files')
     parser.add_argument('--save_path_root', help='File path to save indirect effect to', type=str, required=False, default='../results')
     parser.add_argument('--seed', help='Randomized seed', type=int, required=False, default=42)
@@ -160,7 +173,7 @@ if __name__ == "__main__":
     parser.add_argument('--test_split', help="Percentage corresponding to test set split size", required=False, default=0.3)
     parser.add_argument('--device', help='Device to run on',type=str, required=False, default='cuda' if torch.cuda.is_available() else 'cpu')
     parser.add_argument('--mean_activations_path', help='Path to mean activations file used for intervention', required=False, type=str, default=None)
-    parser.add_argument('--last_token_only', help='Whether to compute indirect effect for heads at only the final token position, or for all token classes', required=False, type=bool, default=True)
+    parser.add_argument('--last_token_only', help='Whether to compute indirect effect for heads at only the final token position, or for all token classes', required=False, type=bool, default=False)
     parser.add_argument('--prefixes', help='Prompt template prefixes to be used', type=json.loads, required=False, default={"input":"Q:", "output":"A:", "instructions":""})
     parser.add_argument('--separators', help='Prompt template separators to be used', type=json.loads, required=False, default={"input":"\n", "output":"\n\n", "instructions":""})    
         
@@ -190,8 +203,8 @@ if __name__ == "__main__":
 
     # Load the dataset
     print("Loading Dataset")
-    dataset = load_dataset(dataset_name, root_data_dir=root_data_dir, test_size=test_split, seed=seed)
-    
+    dataset = load_dataset(dataset_name, root_data_dir=root_data_dir, test_size=test_split, seed=seed,
+                           extra_data_folder=['abstractive_const_len'])
 
     if not os.path.exists(save_path_root):
         os.makedirs(save_path_root)
@@ -208,6 +221,22 @@ if __name__ == "__main__":
                                                      n_icl_examples=n_shots, N_TRIALS=n_trials, prefixes=prefixes, separators=separators)
         torch.save(mean_activations, f'{save_path_root}/{dataset_name}_mean_head_activations.pt')
 
+    # check if file exists before run to prevent overwriting / unnecessary computation
+    path_out_indirect_effect = f'{save_path_root}/{dataset_name}_indirect_effect.pt'
+    path_out_metadata = f'{save_path_root}/indirect_effect_args.txt'
+    if os.path.exists(path_out_indirect_effect):
+        error_msg = f'Seems like the results file is already exist at {path_out_indirect_effect}. Please delete it before running again!'
+        print(error_msg)
+        error_dict = args.__dict__
+        error_dict['error_message'] = error_msg
+        error_dict['timestamp'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        path_out_error_msg = f'{save_path_root}/error_message_duplicate_run.txt'
+        with open(path_out_error_msg, 'w') as tmp_file:
+            json.dump(error_dict, tmp_file, indent=2)
+        print(f'Error message saved at {path_out_error_msg}')
+        print('Exiting...')
+        exit()
+
     print("Computing Indirect Effect")
     indirect_effect = compute_indirect_effect(dataset, mean_activations, model=model, model_config=model_config, tokenizer=tokenizer, 
                                               n_shots=n_shots, n_trials=n_trials, last_token_only=last_token_only, prefixes=prefixes, separators=separators)
@@ -215,9 +244,9 @@ if __name__ == "__main__":
     # Write args to file
     args.save_path_root = save_path_root
     args.mean_activations_path = mean_activations_path
-    with open(f'{save_path_root}/indirect_effect_args.txt', 'w') as arg_file:
+    with open(path_out_metadata, 'w') as arg_file:
         json.dump(args.__dict__, arg_file, indent=2)
 
-    torch.save(indirect_effect, f'{save_path_root}/{dataset_name}_indirect_effect.pt')
+    torch.save(indirect_effect, path_out_indirect_effect)
 
     

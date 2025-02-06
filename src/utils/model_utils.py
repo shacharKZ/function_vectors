@@ -24,7 +24,8 @@ def load_gpt_model_and_tokenizer(model_name:str, device='cuda'):
 
     print("Loading: ", model_name)
 
-    if model_name == 'gpt2-xl':
+    # if model_name == 'gpt2-xl':
+    if 'gpt2' in model_name:
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         tokenizer.pad_token = tokenizer.eos_token
         model = AutoModelForCausalLM.from_pretrained(model_name).to(device)
@@ -34,8 +35,7 @@ def load_gpt_model_and_tokenizer(model_name:str, device='cuda'):
                       "resid_dim":model.config.n_embd,
                       "name_or_path":model.config.name_or_path,
                       "attn_hook_names":[f'transformer.h.{layer}.attn.c_proj' for layer in range(model.config.n_layer)],
-                      "layer_hook_names":[f'transformer.h.{layer}' for layer in range(model.config.n_layer)],
-                      "prepend_bos":False}
+                      "layer_hook_names":[f'transformer.h.{layer}' for layer in range(model.config.n_layer)]}
         
     elif 'gpt-j' in model_name.lower():
         tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -47,8 +47,7 @@ def load_gpt_model_and_tokenizer(model_name:str, device='cuda'):
                       "resid_dim":model.config.n_embd,
                       "name_or_path":model.config.name_or_path,
                       "attn_hook_names":[f'transformer.h.{layer}.attn.out_proj' for layer in range(model.config.n_layer)],
-                      "layer_hook_names":[f'transformer.h.{layer}' for layer in range(model.config.n_layer)],
-                      "prepend_bos":False}
+                      "layer_hook_names":[f'transformer.h.{layer}' for layer in range(model.config.n_layer)]}
 
     elif 'gpt-neox' in model_name.lower() or 'pythia' in model_name.lower():
         tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -60,21 +59,7 @@ def load_gpt_model_and_tokenizer(model_name:str, device='cuda'):
                       "resid_dim": model.config.hidden_size,
                       "name_or_path":model.config.name_or_path,
                       "attn_hook_names":[f'gpt_neox.layers.{layer}.attention.dense' for layer in range(model.config.num_hidden_layers)],
-                      "layer_hook_names":[f'gpt_neox.layers.{layer}' for layer in range(model.config.num_hidden_layers)], 
-                      "prepend_bos":False}
-        
-    elif 'gemma' in model_name.lower():
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        tokenizer.pad_token = tokenizer.eos_token
-        model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16).to(device)
-
-        MODEL_CONFIG={"n_heads":model.config.num_attention_heads,
-                      "n_layers":model.config.num_hidden_layers,
-                      "resid_dim":model.config.hidden_size,
-                      "name_or_path":model.config._name_or_path,
-                      "attn_hook_names":[f'model.layers.{layer}.self_attn.o_proj' for layer in range(model.config.num_hidden_layers)],
-                      "layer_hook_names":[f'model.layers.{layer}' for layer in range(model.config.num_hidden_layers)],
-                      "prepend_bos":True}
+                      "layer_hook_names":[f'gpt_neox.layers.{layer}' for layer in range(model.config.num_hidden_layers)]}
         
     elif 'llama' in model_name.lower():
         if '70b' in model_name.lower():
@@ -93,26 +78,30 @@ def load_gpt_model_and_tokenizer(model_name:str, device='cuda'):
                     quantization_config=bnb_config
             )
         else:
-            if '7b' in model_name.lower() or '8b' in model_name.lower():
+            if '7b' in model_name.lower():
                 model_dtype = torch.float32
             else: #half precision for bigger llama models
                 model_dtype = torch.float16
-            
-            # If transformers version is < 4.31 use LlamaLoaders
-            # tokenizer = LlamaTokenizer.from_pretrained(model_name)
-            # model = LlamaForCausalLM.from_pretrained(model_name, torch_dtype=model_dtype).to(device)
-
-            # If transformers version is >= 4.31, use AutoLoaders
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
-            model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=model_dtype).to(device)
+            tokenizer = LlamaTokenizer.from_pretrained(model_name)
+            model = LlamaForCausalLM.from_pretrained(model_name, torch_dtype=model_dtype).to(device)
 
         MODEL_CONFIG={"n_heads":model.config.num_attention_heads,
                       "n_layers":model.config.num_hidden_layers,
                       "resid_dim":model.config.hidden_size,
                       "name_or_path":model.config._name_or_path,
                       "attn_hook_names":[f'model.layers.{layer}.self_attn.o_proj' for layer in range(model.config.num_hidden_layers)],
-                      "layer_hook_names":[f'model.layers.{layer}' for layer in range(model.config.num_hidden_layers)],
-                      "prepend_bos":True}
+                      "layer_hook_names":[f'model.layers.{layer}' for layer in range(model.config.num_hidden_layers)]}
+    
+    elif 'facebook/opt' in model_name.lower():  # very similar to Llama models
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        model = AutoModelForCausalLM.from_pretrained(model_name).to(device)
+
+        MODEL_CONFIG={"n_heads":model.config.num_attention_heads,
+                      "n_layers":model.config.num_hidden_layers,
+                      "resid_dim":model.config.hidden_size,
+                      "name_or_path":model.config._name_or_path,
+                      "attn_hook_names":[f'model.decoder.layers.{layer}.self_attn.out_proj' for layer in range(model.config.num_hidden_layers)],
+                      "layer_hook_names":[f'model.decoder.layers.{layer}' for layer in range(model.config.num_hidden_layers)]}
     else:
         raise NotImplementedError("Still working to get this model available!")
 

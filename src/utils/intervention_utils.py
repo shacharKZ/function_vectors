@@ -36,7 +36,12 @@ def replace_activation_w_avg(layer_head_token_pairs, avg_activations, model, mod
     edit_layers = [x[0] for x in layer_head_token_pairs]
 
     def rep_act(output, layer_name, inputs):
-        current_layer = int(layer_name.split('.')[2])
+        # current_layer = int(layer_name.split('.')[2])
+        tmp_layer_name = layer_name.split('.')
+        if tmp_layer_name[2].isnumeric():  # all models but opt
+            current_layer = int(tmp_layer_name[2])
+        else:  # only for opt
+            current_layer = int(tmp_layer_name[3])
         if current_layer in edit_layers:    
             if isinstance(inputs, tuple):
                 inputs = inputs[0]
@@ -67,7 +72,8 @@ def replace_activation_w_avg(layer_head_token_pairs, avg_activations, model, mod
             proj_module = get_module(model, layer_name)
             out_proj = proj_module.weight
 
-            if 'gpt2-xl' in model_config['name_or_path']: # GPT2-XL uses Conv1D (not nn.Linear) & has a bias term, GPTJ does not
+            # if 'gpt2-xl' in model_config['name_or_path']: # GPT2-XL uses Conv1D (not nn.Linear) & has a bias term, GPTJ does not
+            if 'gpt2' in model_config['name_or_path']: # GPT2-XL uses Conv1D (not nn.Linear) & has a bias term, GPTJ does not
                 out_proj_bias = proj_module.bias
                 new_output = torch.addmm(out_proj_bias, inputs.squeeze(), out_proj)
                 
@@ -85,7 +91,11 @@ def replace_activation_w_avg(layer_head_token_pairs, avg_activations, model, mod
                     new_output = torch.matmul(inputs, out_proj_dequant.T)
                 else:
                     new_output = torch.matmul(inputs, out_proj.T)
-            
+            elif 'facebook/opt' in model_config['name_or_path']:
+                out_proj_bias = proj_module.bias
+                new_output = torch.addmm(out_proj_bias, inputs.squeeze(), out_proj.T)
+
+
             return new_output
         else:
             return output
@@ -278,7 +288,8 @@ def add_avg_to_activation(layer_head_token_pairs, avg_activations, model, model_
             proj_module = get_module(model, layer_name)
             out_proj = proj_module.weight
 
-            if 'gpt2-xl' in model_config['name_or_path']: # GPT2-XL uses Conv1D (not nn.Linear) & has a bias term, GPTJ does not
+            # if 'gpt2-xl' in model_config['name_or_path']: # GPT2-XL uses Conv1D (not nn.Linear) & has a bias term, GPTJ does not
+            if 'gpt2' in model_config['name_or_path']: # GPT2-XL uses Conv1D (not nn.Linear) & has a bias term, GPTJ does not
                 out_proj_bias = proj_module.bias
                 new_output = torch.addmm(out_proj_bias, inputs.squeeze(), out_proj)
 

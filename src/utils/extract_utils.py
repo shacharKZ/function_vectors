@@ -12,7 +12,7 @@ from .eval_utils import *
 
 
 # Attention Activations
-def gather_attn_activations(prompt_data, layers, dummy_labels, model, tokenizer, model_config):
+def gather_attn_activations(prompt_data, layers, dummy_labels, model, tokenizer):
     """
     Collects activations for an ICL prompt 
 
@@ -31,7 +31,7 @@ def gather_attn_activations(prompt_data, layers, dummy_labels, model, tokenizer,
     
     # Get sentence and token labels
     query = prompt_data['query_target']['input']
-    token_labels, prompt_string = get_token_meta_labels(prompt_data, tokenizer, query, prepend_bos=model_config['prepend_bos'])
+    token_labels, prompt_string = get_token_meta_labels(prompt_data, tokenizer, query)
     sentence = [prompt_string]
 
     inputs = tokenizer(sentence, return_tensors='pt').to(model.device)
@@ -238,16 +238,16 @@ def get_token_averaged_attention(dataset, model, model_config, tokenizer, n_shot
         else:
             word_pairs = dataset['train'][np.random.choice(len(dataset['train']),n_shots, replace=False)]
         
-        # If the model already prepends a bos token by default, we don't want to add one
-        add_bos =  False if model_config['prepend_bos'] else True
+        is_llama = 'llama' in model_config['name_or_path']
+        prepend_bos = not is_llama
 
         word_pairs_test = dataset['valid'][s]
-        prompt_data = word_pairs_to_prompt_data(word_pairs, query_target_pair=word_pairs_test, prepend_bos_token = add_bos)
+        prompt_data = word_pairs_to_prompt_data(word_pairs, query_target_pair=word_pairs_test, prepend_bos_token = prepend_bos)
         
         # Get relevant parts of the Prompt
         query, target = prompt_data['query_target'].values()
 
-        token_labels, prompt_string = get_token_meta_labels(prompt_data, tokenizer, query, prepend_bos=model_config['prepend_bos'])
+        token_labels, prompt_string = get_token_meta_labels(prompt_data, tokenizer, query)
         idx_map, idx_avg = compute_duplicated_labels(token_labels, dummy_labels)
         
         sentence = [prompt_string]     

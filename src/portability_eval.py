@@ -19,7 +19,7 @@ if __name__ == "__main__":
     parser.add_argument('--edit_layer', help='Layer for intervention. If -1, sweep over all layers', type=int, required=False, default=9) # 
 
     parser.add_argument('--n_top_heads', help='Number of attenion head outputs used to compute function vector', required=False, type=int, default=10)
-    parser.add_argument('--model_name', help='Name of model to be loaded', type=str, required=False, default='EleutherAI/gpt-j-6b')
+    parser.add_argument('--model_name', help='Name of model to be loaded', type=str, required=False, default='gpt2-xl')
     parser.add_argument('--root_data_dir', help='Root directory of data files', type=str, required=False, default='../dataset_files')
     parser.add_argument('--save_path_root', help='File path to save to', type=str, required=False, default='../results')
     parser.add_argument('--seed', help='Randomized seed', type=int, required=False, default=5678)
@@ -36,7 +36,8 @@ if __name__ == "__main__":
     dataset_name = args.dataset_name
     model_name = args.model_name
     root_data_dir = args.root_data_dir
-    save_path_root = f"{args.save_path_root}/{dataset_name}"
+    # save_path_root = f"{args.save_path_root}/{dataset_name}"
+    save_path_root = f"{args.save_path_root}/{args.model_name.replace('/', '_')}_{dataset_name}"
     seed = args.seed
     device = args.device
     mean_activations_path = args.mean_activations_path

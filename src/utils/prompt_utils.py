@@ -159,20 +159,19 @@ def extend_labels(sentence_parts, text_labels, tokenizer, label_init=[]):
 
             actual_tokens = post-pre
             
-            if actual_tokens == 0:
-                # if tokenization gobbles up a previous label, then we overwrite the last previous label w/ label that should've been added
-                final_labels[-1] = label
-            
             final_labels.extend([label] * (actual_tokens))
 
-            if j==3 or j==2 and len(element[3])==0:
+            # if j==3:
+            #     final_labels[-1] = final_labels[-1].replace('structural', 'predictive')
+            if j==3 or j==2 and len(element[3])==0:  # BUG FIX 2024-05-21
+
                 final_labels[-1] = final_labels[-1].replace('structural', 'predictive').replace('separator', 'predictive')
             if j==5:
                 final_labels[-actual_tokens] = final_labels[-actual_tokens].replace('separator', 'end_of_example')
     
     return final_labels
 
-def tokenize_labels(sentence_parts, text_labels, tokenizer, prepend_bos=False):
+def tokenize_labels(sentence_parts, text_labels, tokenizer):
     """
     Extends phrase-level labels across tokenization for in-context learning prompts. Tested with GPT-2's tokenizer from huggingface.
     Parameters:
@@ -187,15 +186,17 @@ def tokenize_labels(sentence_parts, text_labels, tokenizer, prepend_bos=False):
     https://www.depends-on-the-definition.com/named-entity-recognition-with-bert/
     """
     
-    # If the model typically prepends a bos, we add a bos label to label init
-    if prepend_bos:
+    # is_llama = 'llama' in tokenizer.name_or_path.lower()
+    is_llama = 'llama' in tokenizer.name_or_path.lower() or 'facebook/opt' in tokenizer.name_or_path.lower()
+
+    if is_llama:
         labels = extend_labels(sentence_parts, text_labels, tokenizer, label_init=['bos_token'])
     else:
         labels = extend_labels(sentence_parts, text_labels, tokenizer, label_init=[])
 
     return labels
 
-def get_token_meta_labels(prompt_data, tokenizer, query=None, prepend_bos=False):
+def get_token_meta_labels(prompt_data, tokenizer, query=None):
     """
     Computes the ICL meta-labels for every token in a prompt.
     
@@ -214,14 +215,14 @@ def get_token_meta_labels(prompt_data, tokenizer, query=None, prepend_bos=False)
         query = query[0]
         
     prompt_parts, prompt_part_labels = get_prompt_parts_and_labels(prompt_data, query_sentence=query)
-    token_meta_labels = tokenize_labels(prompt_parts, prompt_part_labels, tokenizer, prepend_bos)
+    token_meta_labels = tokenize_labels(prompt_parts, prompt_part_labels, tokenizer)
     prompt_string = create_prompt(prompt_data=prompt_data, sentence=query)
     tokens = [tokenizer.decode(x) for x in tokenizer(prompt_string).input_ids]
     token_labels = list(zip(np.arange(len(tokens)), tokens, token_meta_labels))
 
     return token_labels, prompt_string
 
-def get_dummy_token_labels(n_icl_examples, tokenizer, model_config, prefixes=None, separators=None):
+def get_dummy_token_labels(n_icl_examples, tokenizer, prefixes=None, separators=None):
     """
     Computes the ground-truth meta labels & indices for an ICL prompt with the specified number of example pairs
     These GT labels assume each word gets a single token
@@ -235,9 +236,9 @@ def get_dummy_token_labels(n_icl_examples, tokenizer, model_config, prefixes=Non
     Return:
     final_token_labels: list of tuples containing a token's index and label name [(int, str), ... ]
     """
-    # If the model already prepends a bos token by default, we don't want to add one to our prompts
-    prepend_bos =  False if model_config['prepend_bos'] else True
-
+    # is_llama = 'llama' in tokenizer.name_or_path
+    is_llama = 'llama' in tokenizer.name_or_path or 'facebook/opt' in tokenizer.name_or_path
+    prepend_bos = not is_llama
     if prefixes is not None and separators is not None:
         dummy_prompt_data = word_pairs_to_prompt_data({'input': ['a']*n_icl_examples, 'output':['a']*n_icl_examples}, 
                                                     query_target_pair={'input':['a'], 'output':['a']}, prepend_bos_token=prepend_bos,
@@ -245,7 +246,7 @@ def get_dummy_token_labels(n_icl_examples, tokenizer, model_config, prefixes=Non
     else:
         dummy_prompt_data = word_pairs_to_prompt_data({'input': ['a']*n_icl_examples, 'output':['a']*n_icl_examples}, 
                                                   query_target_pair={'input':['a'], 'output':['a']}, prepend_bos_token=prepend_bos)
-    final_token_labels, _ = get_token_meta_labels(dummy_prompt_data,tokenizer, prepend_bos=model_config['prepend_bos'])
+    final_token_labels, _ = get_token_meta_labels(dummy_prompt_data,tokenizer)
     final_token_labels = [(x[0],x[-1]) for x in final_token_labels]
     return final_token_labels
 
@@ -407,7 +408,8 @@ def split_icl_dataset(dataset, train_size=None, test_size=0.3, seed=42) -> Dict[
 def load_dataset(task_name: str,
                  root_data_dir: str = '../dataset_files',
                  test_size = 0.3, 
-                 seed=32
+                 seed=32,
+                 extra_data_folder=None
                 ) -> Dict[str,ICLDataset]:
     """
     Loads a dataset with input/output pairs
@@ -422,6 +424,12 @@ def load_dataset(task_name: str,
     """
 
     data_folders = ['abstractive', 'extractive']
+    ######
+    if extra_data_folder is not None:
+        if type(extra_data_folder) != list:
+            extra_data_folder = [extra_data_folder]
+        add_data_folder = add_data_folder + data_folders
+    ######
     assert test_size <= 1.0
 
     path = Path(root_data_dir)
@@ -429,7 +437,7 @@ def load_dataset(task_name: str,
 
     d_group = list(filter(lambda x: x[1], d_group_map))
 
-    assert len(d_group) !=0 and len(d_group) == 1, f"Error! 'task_name'={task_name}.json must be uniquely contained in one of these directories:{data_folders}. Please check the root_data_dir"
+    assert len(d_group) != 0 and len(d_group) == 1, f"Error! 'task_name'={task_name}.json must be uniquely contained in one of these directories:{data_folders}. Please check the root_data_dir. If you look for \"_const_len\" datasets, please use the create_const_len_ds.py script in the root of the dataset_files dir."
     dataset_folder = d_group[0][0]
     
     d_path = os.path.join(path, dataset_folder, f'{task_name}.json')

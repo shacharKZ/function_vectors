@@ -151,7 +151,7 @@ def is_nontrivial_prefix(prediction: str, target: str) -> bool:
     return len(prediction) > 0 and target.startswith(prediction)
 
 # Evaluate a sentence
-def sentence_eval(sentence, target, model, tokenizer, compute_nll=True, generate_str=False, pred_file=None, metric_fn=None):
+def sentence_eval(sentence, target, model, tokenizer, compute_nll=True, generate_str=False, pred_file=None, metric_fn=None, annotate=False):
     """
     Evaluate a single sentence completion for a model, comparing to the given target.
 
@@ -164,6 +164,7 @@ def sentence_eval(sentence, target, model, tokenizer, compute_nll=True, generate
     generate_str: whether to generate a string of tokens or predict a single token
     pred_file: filepath to save intermediate generations for debugging
     metric: metric to use for longer generations (F1, exact match, etc.)
+    annotate: whether to print the sentence and target completion length # SHA
 
     Returns:
     model output on the provided sentence
@@ -179,6 +180,10 @@ def sentence_eval(sentence, target, model, tokenizer, compute_nll=True, generate
         nll_targets = nll_inputs.input_ids.clone()
         target_len = len(nll_targets.squeeze()) - len(inputs.input_ids.squeeze()) 
         nll_targets[:,:-target_len] = -100  # This is the accepted value to skip indices when computing loss in nn.CrossEntropyLoss
+
+        if annotate:
+            tmp_print = target_completion.replace("\n", "\\n")
+            print(f'len={nll_inputs.input_ids.shape[1]}, sentence_with_target="{tmp_print}", only target="{target}"')
 
         output = model(**nll_inputs, labels=nll_targets)
 
@@ -207,7 +212,7 @@ def sentence_eval(sentence, target, model, tokenizer, compute_nll=True, generate
 
 def n_shot_eval(dataset, fv_vector, edit_layer: int, n_shots: int, model, model_config, tokenizer, shuffle_labels:bool=False,
                 filter_set=None, prefixes=None, separators=None, generate_str=False, pred_filepath=None,
-                metric="f1_score"):
+                metric="f1_score", test_split='test', prompt_example_split='train', annotate=False):
     """
     Evaluate a model and FV intervention on the model using the provided ICL dataset.
 
@@ -237,8 +242,11 @@ def n_shot_eval(dataset, fv_vector, edit_layer: int, n_shots: int, model, model_
         clean_score_list = []
         intervention_score_list = []
 
-    # If the model already prepends a bos token by default, we don't want to add one
-    prepend_bos =  False if model_config['prepend_bos'] else True
+    # # If the model already prepends a bos token by default, we don't want to add one
+    # prepend_bos =  False if model_config['prepend_bos'] else True
+    is_llama = 'llama' in model_config['name_or_path'] or 'facebook/opt' in model_config['name_or_path']
+    prepend_bos = not is_llama
+
 
     if filter_set is None:
         filter_set = np.arange(len(dataset['test']))
@@ -254,7 +262,8 @@ def n_shot_eval(dataset, fv_vector, edit_layer: int, n_shots: int, model, model_
         if n_shots == 0:
             word_pairs = {'input':[], 'output':[]}
         else:
-            word_pairs = dataset['train'][np.random.choice(len(dataset['train']),n_shots, replace=False)]
+            # word_pairs = dataset['train'][np.random.choice(len(dataset['train']),n_shots, replace=False)]
+            word_pairs = dataset[prompt_example_split][np.random.choice(len(dataset[prompt_example_split]),n_shots, replace=False)]
         word_pairs_test = dataset['test'][j]
 
         if prefixes is not None and separators is not None:
@@ -331,7 +340,7 @@ def n_shot_eval(dataset, fv_vector, edit_layer: int, n_shots: int, model, model_
 # Evaluate few-shot dataset w/o intervention
 def n_shot_eval_no_intervention(dataset, n_shots, model, model_config, tokenizer, compute_ppl=True, generate_str=False,
                                 shuffle_labels=False, prefixes=None, separators=None, pred_filepath=None,
-                                metric="f1_score", test_split='test'):
+                                metric="f1_score", test_split='test', prompt_example_split='train', annotate=False):
     """
     Evaluate a model (without any interventions) on the provided ICL dataset.
 
@@ -361,8 +370,9 @@ def n_shot_eval_no_intervention(dataset, n_shots, model, model_config, tokenizer
     if generate_str:
         score_list = []
 
-    # If the model already prepends a bos token by default, we don't want to add one
-    prepend_bos =  False if model_config['prepend_bos'] else True
+    # is_llama = 'llama' in model_config['name_or_path']
+    is_llama = 'llama' in model_config['name_or_path'] or 'facebook/opt' in model_config['name_or_path']
+    prepend_bos = not is_llama
 
     if pred_filepath:
         pred_file = open(pred_filepath, 'w')
@@ -373,7 +383,8 @@ def n_shot_eval_no_intervention(dataset, n_shots, model, model_config, tokenizer
         if n_shots == 0:
             word_pairs = {'input':[], 'output':[]}
         else:
-            word_pairs = dataset['train'][np.random.choice(len(dataset['train']),n_shots, replace=False)]
+            # word_pairs = dataset['train'][np.random.choice(len(dataset['train']),n_shots, replace=False)]
+            word_pairs = dataset[prompt_example_split][np.random.choice(len(dataset[prompt_example_split]),n_shots, replace=False)]
         word_pairs_test = dataset[test_split][j]
         if prefixes is not None and separators is not None:
             prompt_data = word_pairs_to_prompt_data(word_pairs, query_target_pair = word_pairs_test, prepend_bos_token=prepend_bos, 
@@ -397,7 +408,8 @@ def n_shot_eval_no_intervention(dataset, n_shots, model, model_config, tokenizer
         if compute_ppl:
             clean_output, clean_nll = sentence_eval(sentence, target = [target],
                                                     model=model, tokenizer=tokenizer, 
-                                                    compute_nll=compute_ppl)
+                                                    compute_nll=compute_ppl,
+                                                    annotate=annotate and j%200 == 0)
             clean_nll_list.append(clean_nll)
             
         elif generate_str:
@@ -412,11 +424,14 @@ def n_shot_eval_no_intervention(dataset, n_shots, model, model_config, tokenizer
             score = sentence_eval(sentence, target=target, model=model,
                                   tokenizer=tokenizer, compute_nll=False,
                                   generate_str=True, pred_file=pred_file,
-                                  metric_fn=metric_fn)
+                                  metric_fn=metric_fn,
+                                  annotate=annotate and j%200 == 0)
+            
             score_list.append(score)
         else:
             clean_output = sentence_eval(sentence, target = [target],
-                                         model=model, tokenizer=tokenizer, compute_nll=False)
+                                         model=model, tokenizer=tokenizer, compute_nll=False,
+                                         annotate=annotate and j%200 == 0)
 
         if not generate_str:
             clean_rank = compute_individual_token_rank(clean_output, target_token_id)

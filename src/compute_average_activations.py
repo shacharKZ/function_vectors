@@ -14,7 +14,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--dataset_name', help='Name of the dataset to be loaded', type=str, required=True)
-    parser.add_argument('--model_name', help='Name of model to be loaded', type=str, required=False, default='EleutherAI/gpt-j-6b')
+    parser.add_argument('--model_name', help='Name of model to be loaded', type=str, required=False, default='gpt2-xl')
     parser.add_argument('--root_data_dir', help='Root directory of data files', type=str, required=False, default='../dataset_files')
     parser.add_argument('--save_path_root', help='File path to save mean activations to', type=str, required=False, default='../results')
     parser.add_argument('--seed', help='Randomized seed', type=int, required=False, default=42)
@@ -31,7 +31,8 @@ if __name__ == "__main__":
     dataset_name = args.dataset_name
     model_name = args.model_name
     root_data_dir = args.root_data_dir
-    save_path_root = f"{args.save_path_root}/{dataset_name}"
+    # save_path_root = f"{args.save_path_root}/{dataset_name}"
+    save_path_root = f"{args.save_path_root}/{args.model_name.replace('/', '_')}_{dataset_name}"
     seed = args.seed
     n_shots = args.n_shots
     n_trials = args.n_trials
@@ -44,13 +45,14 @@ if __name__ == "__main__":
     # Load Model & Tokenizer
     torch.set_grad_enabled(False)
     print("Loading Model")
-    model, tokenizer, model_config = load_gpt_model_and_tokenizer(model_name, device=device)
+    model, tokenizer, model_config = load_gpt_model_and_tokenizer(model_name, device=device, )
 
     set_seed(seed)
 
     # Load the dataset
     print("Loading Dataset")
-    dataset = load_dataset(dataset_name, root_data_dir=root_data_dir, test_size=test_split, seed=seed)
+    dataset = load_dataset(dataset_name, root_data_dir=root_data_dir, test_size=test_split, seed=seed,
+                            extra_data_folder=['abstractive_const_len'])
 
     print("Computing Mean Activations")
     mean_activations = get_mean_head_activations(dataset, model=model, model_config=model_config, tokenizer=tokenizer, 
