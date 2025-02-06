@@ -13,7 +13,8 @@ tokenizer = AutoTokenizer.from_pretrained(model_name)
 tokenizer.pad_token = tokenizer.eos_token
 
 main_data_path = os.path.dirname(os.path.realpath(__file__))
-subset_folder = 'abstractive'
+# subset_folder = 'abstractive'
+subset_folder = 'extractive'
 folder_input_ds = os.path.join(main_data_path, subset_folder)
 folder_out = os.path.join(main_data_path, subset_folder + '_const_len')
 # %%
