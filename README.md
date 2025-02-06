@@ -1,3 +1,11 @@
+# Reversed Attention + Function Vectors
+
+This repo is a fork of Function Vectors [(Offical Repo)](https://github.com/ericwtodd/function_vectors) that was used for parts of the results in Reversed Attention [(Offical Repo)](https://github.com/shacharKZ/Reversed-Attention)
+
+NOTE: the version of code that was used for Reversed Attention might be different from the most updated version of Function Vectors' repo
+
+Follow Function Vectors instructions to run the experiments
+
 # Function Vectors in Large Language Models
 ### [Project Website](https://functions.baulab.info) | [Arxiv Preprint](https://arxiv.org/abs/2310.15213) | [OpenReview](https://openreview.net/forum?id=AwyxtyMwaG)
 
@@ -33,7 +41,10 @@ Other main code is split into various util files:
 - `model_utils.py` contains helpful functions for loading models & tokenizers from huggingface
 - `prompt_utils.py` contains data loading and prompt creation functionality
 
-## Citing our work
+## Citing
+We thank the authors of the Function Vectors paper. Please cite them:
+
+
 This work appeared at ICLR 2024. The paper can be cited as follows:
 
 ```bibtex
