@@ -9,6 +9,7 @@ tokenizer = AutoTokenizer.from_pretrained(model_name)
 tokenizer.pad_token = tokenizer.eos_token
 
 main_data_path = os.path.dirname(os.path.realpath(__file__))
+# please download the data from https://lre.baulab.info/data/ and provide the path to the folder (credits to the authors of `Linearity of Relation Decoding in Transformer LMs' https://lre.baulab.info/ )
 path_original_ds_linear_relations_paper = 'TODO'  # TODO: please provide the path to the dataset from the paper
 subset_folder = 'factual'
 folder_input_ds = os.path.join(path_original_ds_linear_relations_paper, subset_folder)
